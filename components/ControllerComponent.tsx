@@ -39,8 +39,8 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
     useEffect(() => {
         const randomId = Math.random().toString(36).substr(2, 9)
         const peer = new Peer(`controller-${randomId}`, {
-            host: 'localhost',
-            port: 8000,
+            host: process.env.NEXT_PUBLIC_PEERJS_HOST || 'localhost',
+            port: parseInt(process.env.NEXT_PUBLIC_PEERJS_PORT || '8000'),
             path: '/myapp'
         })
         

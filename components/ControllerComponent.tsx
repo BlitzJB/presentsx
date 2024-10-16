@@ -5,22 +5,37 @@ import Peer, { DataConnection } from 'peerjs'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight, MousePointer2 } from 'lucide-react'
 
+/**
+ * ControllerComponent
+ * '/
+ * This component acts as a remote controller for the presentation.
+ * It establishes a peer-to-peer connection with the presenter,
+ * allows for slide navigation, and provides a video stream of the presentation.
+ * 
+ * @component
+ */
 interface ControllerComponentProps {
   presentationId: string
   presenterPeerId: string
 }
 
 function ControllerComponent({ presentationId, presenterPeerId }: ControllerComponentProps) {
+    // Connection and stream state
     const [connected, setConnected] = useState(false)
     const [isReceivingStream, setIsReceivingStream] = useState(false)
     const [streamError, setStreamError] = useState<string | null>(null)
     const [isStreamReady, setIsStreamReady] = useState(false)
+    
+    // Refs for peer connection, data connection, and video elements
     const peerRef = useRef<Peer | null>(null)
     const connectionRef = useRef<DataConnection | null>(null)
     const remoteVideoRef = useRef<HTMLVideoElement>(null)
     const remoteStreamRef = useRef<MediaStream | null>(null)
     const isMouseControlActive = useRef(false)
 
+    /**
+     * Initializes the peer connection to the presenter
+     */
     useEffect(() => {
         const randomId = Math.random().toString(36).substr(2, 9)
         const peer = new Peer(`controller-${randomId}`, {
@@ -57,6 +72,9 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
         }
     }, [presentationId, presenterPeerId])
 
+    /**
+     * Establishes a connection to the presenter
+     */
     const connectToPresenter = (peer: Peer) => {
         console.log('Connecting to presenter:', presenterPeerId)
         const conn = peer.connect(presenterPeerId)
@@ -64,6 +82,9 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
         setupDataConnection(conn)
     }
 
+    /**
+     * Sets up the data connection with the presenter
+     */
     const setupDataConnection = (conn: DataConnection) => {
         conn.on('open', () => {
             console.log('Data connection established')
@@ -71,15 +92,22 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
         })
         conn.on('data', (data: unknown) => {
             console.log('Received data:', data)
+            // Handle incoming data from presenter if needed
         })
     }
 
+    /**
+     * Sends a control message to the presenter
+     */
     const sendMessage = (message: string) => {
         if (connectionRef.current) {
             connectionRef.current.send(message)
         }
     }
 
+    /**
+     * Starts the video playback when the stream is ready
+     */
     const handleStartViewing = () => {
         if (remoteVideoRef.current && remoteStreamRef.current) {
             console.log('Starting video playback')
@@ -102,6 +130,9 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
         }
     }
 
+    /**
+     * Handles pointer movement and sends the relative position to the presenter
+     */
     const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         if (connectionRef.current && remoteVideoRef.current) {
             const rect = remoteVideoRef.current.getBoundingClientRect()
@@ -116,6 +147,9 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
         }
     }, [])
 
+    /**
+     * Handles pointer down event and sends it to the presenter
+     */
     const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         if (connectionRef.current && remoteVideoRef.current) {
             const rect = remoteVideoRef.current.getBoundingClientRect()
@@ -131,6 +165,9 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
         }
     }, [])
 
+    /**
+     * Handles pointer up event and sends it to the presenter
+     */
     const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         if (connectionRef.current && remoteVideoRef.current) {
             const rect = remoteVideoRef.current.getBoundingClientRect()
@@ -146,6 +183,9 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
         }
     }, [])
 
+    /**
+     * Toggles the mouse control mode
+     */
     const toggleMouseControl = useCallback(() => {
         isMouseControlActive.current = !isMouseControlActive.current
         if (isMouseControlActive.current) {
@@ -155,6 +195,9 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
         }
     }, [])
 
+    /**
+     * Handles pointer lock change events
+     */
     useEffect(() => {
         const handlePointerLockChange = () => {
             isMouseControlActive.current = document.pointerLockElement === remoteVideoRef.current
@@ -214,7 +257,7 @@ function ControllerComponent({ presentationId, presenterPeerId }: ControllerComp
                 )}
             </div>
 
-            {/* Bottom Control Bar */}
+            {/* Control Bar */}
             <div className="bg-white shadow-md p-2 flex justify-center space-x-4">
                 <Button 
                     onClick={() => sendMessage('prev')} 

@@ -10,20 +10,34 @@ import { QRCodeSVG } from 'qrcode.react'
 import { useToast } from '@/components/ui/use-toast'
 import { Toaster } from 'react-hot-toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-// import { MouseEvent } from 'react'  // Remove or comment out this line
 
+/**
+ * Presentation Component
+ * 
+ * This component manages the display and control of a presentation, including:
+ * - Slide navigation
+ * - Fullscreen mode
+ * - Peer-to-peer connection for remote control
+ * - Drawing capabilities
+ * - Screen sharing
+ * 
+ * @component
+ */
 interface PresentationProps {
-  slides: string[]
-  title: string
-  presentationId: string
+  slides: string[]  // Array of slide content strings
+  title: string     // Presentation title
+  presentationId: string  // Unique identifier for the presentation
 }
 
 export function Presentation({ slides, title, presentationId }: PresentationProps) {
+  // State management for presentation controls
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const presentationRef = useRef<HTMLDivElement>(null)
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Peer connection states
   const [isPeerReady, setIsPeerReady] = useState(false)
   const [peerId, setPeerId] = useState<string>('')
   const [isInstructionModalOpen, setIsInstructionModalOpen] = useState(false)
@@ -39,23 +53,33 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
   const [shareFeedback, setShareFeedback] = useState(false)
   const [isPeerInitiated, setIsPeerInitiated] = useState(false)
 
+  // Drawing states
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [drawingColor, setDrawingColor] = useState('red')
   const [drawingWidth, setDrawingWidth] = useState(3)
-
   const [isDrawingMode, setIsDrawingMode] = useState(false)
 
+  // Virtual cursor for remote control
   const virtualCursorRef = useRef<HTMLDivElement>(null)
 
+  /**
+   * Advances to the next slide
+   */
   const nextSlide = useCallback(() => {
     setCurrentSlide((prev) => Math.min(prev + 1, slides.length - 1))
   }, [slides.length])
 
+  /**
+   * Moves to the previous slide
+   */
   const prevSlide = useCallback(() => {
     setCurrentSlide((prev) => Math.max(prev - 1, 0))
   }, [])
 
+  /**
+   * Toggles fullscreen mode
+   */
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       presentationRef.current?.requestFullscreen()
@@ -66,6 +90,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }, [])
 
+  /**
+   * Shows controls temporarily and hides them after a delay in fullscreen mode
+   */
   const showControlsTemporarily = useCallback(() => {
     setShowControls(true)
     if (controlsTimeoutRef.current) {
@@ -78,6 +105,7 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }, 3000)
   }, [isFullscreen])
 
+  // Effect for keyboard and mouse controls
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'ArrowLeft') {
@@ -104,6 +132,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
 
   const CurrentSlideComponent = slides[currentSlide]
 
+  /**
+   * Initializes the peer-to-peer connection for remote control
+   */
   const initializePeerConnection = useCallback(async () => {
     console.log('Initializing peer connection')
     setIsPeerInitiated(true)
@@ -140,6 +171,7 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
 
     peerRef.current = peer
 
+    // Initialize screen sharing
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
@@ -157,6 +189,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }, [presentationId])
 
+  /**
+   * Sets up the data connection with the controller
+   */
   const setupDataConnection = (conn: DataConnection) => {
     conn.on('data', (data: unknown) => {
       console.log('Received data:', data)
@@ -183,6 +218,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     })
   }
 
+  /**
+   * Initiates a call to the controller for screen sharing
+   */
   const callController = (controllerId: string) => {
     if (peerRef.current && localStreamRef.current) {
       const call = peerRef.current.call(controllerId, localStreamRef.current)
@@ -193,21 +231,31 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }
 
+  /**
+   * Handles the "Add Controller" button click
+   */
   const handleAddController = () => {
     setIsInstructionModalOpen(true)
   }
 
+  /**
+   * Confirms screen sharing and initializes peer connection
+   */
   const handleConfirmScreenShare = () => {
     setIsInstructionModalOpen(false)
     initializePeerConnection()
   }
 
+  // Effect to show peer ID when ready
   useEffect(() => {
     if (isPeerReady && peerId) {
       setShowPeerId(true)
     }
   }, [isPeerReady, peerId])
 
+  /**
+   * Copies the controller link to clipboard
+   */
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(controllerLink)
@@ -227,6 +275,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }
 
+  /**
+   * Shares the controller link using the Web Share API
+   */
   const shareLink = async () => {
     if (navigator.share) {
       try {
@@ -248,6 +299,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }
 
+  /**
+   * Shows the peer ID modal if the connection is ready
+   */
   const showPeerIdModal = useCallback(() => {
     if (isPeerReady && peerId) {
       setIsPeerIdModalOpen(true)
@@ -260,12 +314,18 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }, [isPeerReady, peerId, toast])
 
+  /**
+   * Returns the current connection status
+   */
   const getConnectionStatus = () => {
     if (!isPeerReady) return 'Initializing connection...'
     if (isConnected) return 'Connected to controller'
     return 'Waiting for controller...'
   }
 
+  /**
+   * Starts drawing on the canvas
+   */
   const startDrawing = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -279,6 +339,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     ctx.moveTo(event.clientX - rect.left, event.clientY - rect.top)
   }, [])
 
+  /**
+   * Continues drawing on the canvas as the mouse moves
+   */
   const draw = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return
 
@@ -296,10 +359,16 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     ctx.stroke()
   }, [isDrawing, drawingColor, drawingWidth])
 
+  /**
+   * Stops drawing on the canvas
+   */
   const stopDrawing = useCallback(() => {
     setIsDrawing(false)
   }, [])
 
+  /**
+   * Clears the canvas
+   */
   const clearCanvas = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -310,6 +379,7 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     ctx.clearRect(0, 0, canvas.width, canvas.height)
   }, [])
 
+  // Effect to resize canvas on window resize
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -327,6 +397,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }, [])
 
+  /**
+   * Toggles drawing mode
+   */
   const toggleDrawingMode = useCallback(() => {
     setIsDrawingMode(prev => !prev)
     if (canvasRef.current) {
@@ -334,6 +407,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }, [isDrawingMode])
 
+  /**
+   * Handles remote mouse movement
+   */
   const handleRemoteMouseMove = useCallback(({ x, y }: { x: number, y: number }) => {
     if (virtualCursorRef.current && presentationRef.current) {
       const presentationRect = presentationRef.current.getBoundingClientRect()
@@ -347,6 +423,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }, [])
 
+  /**
+   * Handles remote mouse clicks
+   */
   const handleRemoteMouseClick = useCallback((data: { x: number, y: number, button: number }, type: 'mousedown' | 'mouseup') => {
     if (presentationRef.current) {
       const presentationRect = presentationRef.current.getBoundingClientRect()
@@ -392,6 +471,7 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     }
   }, [])
 
+  // Effect to log virtual cursor position (for debugging)
   useEffect(() => {
     const logCursorPosition = () => {
       if (virtualCursorRef.current) {

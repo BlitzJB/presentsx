@@ -163,8 +163,10 @@ export function Sandbox({ componentString }: SandboxProps) {
       setError(event.error)
     }
 
-    window.addEventListener('error', handleError)
-    return () => window.removeEventListener('error', handleError)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('error', handleError)
+      return () => window.removeEventListener('error', handleError)
+    }
   }, [])
 
   if (error) {

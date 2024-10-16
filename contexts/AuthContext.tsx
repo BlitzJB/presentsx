@@ -4,7 +4,7 @@ import { auth } from '@/lib/firebase'
 import { useAuthState } from 'react-firebase-hooks/auth'
 
 type AuthContextType = {
-  user: User | null
+  user: User | null | undefined
   loading: boolean
 }
 

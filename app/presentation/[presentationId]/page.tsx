@@ -64,6 +64,7 @@ export default function PresentationViewer({ params }: PresentationViewerProps) 
         <Presentation
             slides={presentation.slides.map(slide => slide.code)}
             title={presentation.title}
+            presentationId={params.presentationId}
         />
     )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, type MouseEvent } from 'react'
 import { ChevronLeft, ChevronRight, Maximize, Minimize, UserPlus, Copy, Share2, Check, Link } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sandbox } from './Sandbox'
@@ -10,6 +10,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { useToast } from '@/components/ui/use-toast'
 import { Toaster } from 'react-hot-toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+// import { MouseEvent } from 'react'  // Remove or comment out this line
 
 interface PresentationProps {
   slides: string[]
@@ -37,6 +38,15 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
   const [copyFeedback, setCopyFeedback] = useState(false)
   const [shareFeedback, setShareFeedback] = useState(false)
   const [isPeerInitiated, setIsPeerInitiated] = useState(false)
+
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [drawingColor, setDrawingColor] = useState('red')
+  const [drawingWidth, setDrawingWidth] = useState(3)
+
+  const [isDrawingMode, setIsDrawingMode] = useState(false)
+
+  const virtualCursorRef = useRef<HTMLDivElement>(null)
 
   const nextSlide = useCallback(() => {
     setCurrentSlide((prev) => Math.min(prev + 1, slides.length - 1))
@@ -150,7 +160,18 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
   const setupDataConnection = (conn: DataConnection) => {
     conn.on('data', (data: unknown) => {
       console.log('Received data:', data)
-      if (typeof data === 'string') {
+      if (typeof data === 'object' && data !== null) {
+        const { type } = data as { type: string }
+        switch (type) {
+          case 'mousemove':
+            handleRemoteMouseMove(data as { x: number, y: number })
+            break
+          case 'mousedown':
+          case 'mouseup':
+            handleRemoteMouseClick(data as { x: number, y: number, button: number }, type)
+            break
+        }
+      } else if (typeof data === 'string') {
         if (data === 'next') nextSlide()
         else if (data === 'prev') prevSlide()
       }
@@ -245,6 +266,144 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
     return 'Waiting for controller...'
   }
 
+  const startDrawing = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    setIsDrawing(true)
+    const rect = canvas.getBoundingClientRect()
+    ctx.beginPath()
+    ctx.moveTo(event.clientX - rect.left, event.clientY - rect.top)
+  }, [])
+
+  const draw = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return
+
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const rect = canvas.getBoundingClientRect()
+    ctx.lineTo(event.clientX - rect.left, event.clientY - rect.top)
+    ctx.strokeStyle = drawingColor
+    ctx.lineWidth = drawingWidth
+    ctx.lineCap = 'round'
+    ctx.stroke()
+  }, [isDrawing, drawingColor, drawingWidth])
+
+  const stopDrawing = useCallback(() => {
+    setIsDrawing(false)
+  }, [])
+
+  const clearCanvas = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+
+    resizeCanvas()
+    window.addEventListener('resize', resizeCanvas)
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas)
+    }
+  }, [])
+
+  const toggleDrawingMode = useCallback(() => {
+    setIsDrawingMode(prev => !prev)
+    if (canvasRef.current) {
+      canvasRef.current.style.pointerEvents = isDrawingMode ? 'none' : 'auto'
+    }
+  }, [isDrawingMode])
+
+  const handleRemoteMouseMove = useCallback(({ x, y }: { x: number, y: number }) => {
+    if (virtualCursorRef.current && presentationRef.current) {
+      const presentationRect = presentationRef.current.getBoundingClientRect()
+
+      // Calculate the absolute position within the presentation area
+      const newX = x * presentationRect.width
+      const newY = y * presentationRect.height
+
+      virtualCursorRef.current.style.transform = `translate(${newX}px, ${newY}px)`
+      virtualCursorRef.current.style.display = 'block' // Ensure the cursor is visible
+    }
+  }, [])
+
+  const handleRemoteMouseClick = useCallback((data: { x: number, y: number, button: number }, type: 'mousedown' | 'mouseup') => {
+    if (presentationRef.current) {
+      const presentationRect = presentationRef.current.getBoundingClientRect()
+      const x = data.x * presentationRect.width
+      const y = data.y * presentationRect.height
+
+      // Create mousedown/mouseup event
+      const mouseEvent = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: Math.round(presentationRect.left + x),
+        clientY: Math.round(presentationRect.top + y),
+        button: data.button,
+      })
+
+      // Find the element at the cursor position
+      const elementAtPoint = document.elementFromPoint(presentationRect.left + x, presentationRect.top + y)
+
+      if (elementAtPoint) {
+        // Dispatch the mousedown/mouseup event
+        elementAtPoint.dispatchEvent(mouseEvent)
+
+        // If it's a mouseup event, dispatch a single click event
+        if (type === 'mouseup') {
+          const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: Math.round(presentationRect.left + x),
+            clientY: Math.round(presentationRect.top + y),
+            button: data.button,
+          })
+          elementAtPoint.dispatchEvent(clickEvent)
+        }
+      }
+
+      // Update virtual cursor appearance for mousedown/mouseup
+      if (virtualCursorRef.current) {
+        virtualCursorRef.current.style.transform = `translate(${x}px, ${y}px)`
+        virtualCursorRef.current.style.backgroundColor = type === 'mousedown' ? 'blue' : 'red'
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const logCursorPosition = () => {
+      if (virtualCursorRef.current) {
+        console.log('Virtual cursor position:', virtualCursorRef.current.style.transform)
+      }
+    }
+
+    const interval = setInterval(logCursorPosition, 1000) // Log every second
+
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <div 
       ref={presentationRef} 
@@ -324,9 +483,9 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
         <span className="sr-only">Next slide</span>
       </Button>
 
-      {/* Bottom bar */}
+      {/* Bottom bar with slide controls and drawing controls */}
       <div 
-        className={`absolute bottom-0 left-0 right-0 h-12 bg-gray-100 flex items-center justify-between px-2 z-20 transition-opacity duration-300 ${
+        className={`absolute bottom-0 left-0 right-0 h-12 bg-gray-100 flex items-center justify-between px-2 z-40 transition-opacity duration-300 ${
           isFullscreen && !showControls ? 'opacity-0' : 'opacity-100'
         }`}
       >
@@ -345,6 +504,53 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
             </Button>
           ))}
         </div>
+
+        {/* Drawing controls */}
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleDrawingMode}
+            className={`${isDrawingMode ? 'bg-primary text-primary-foreground' : ''}`}
+          >
+            {isDrawingMode ? 'Exit Drawing' : 'Start Drawing'}
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setDrawingColor('red')}
+            className={`w-6 h-6 p-0 ${drawingColor === 'red' ? 'ring-2 ring-offset-2 ring-red-500' : ''}`}
+            style={{ backgroundColor: 'red' }}
+          >
+            <span className="sr-only">Red</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setDrawingColor('blue')}
+            className={`w-6 h-6 p-0 ${drawingColor === 'blue' ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
+            style={{ backgroundColor: 'blue' }}
+          >
+            <span className="sr-only">Blue</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setDrawingColor('green')}
+            className={`w-6 h-6 p-0 ${drawingColor === 'green' ? 'ring-2 ring-offset-2 ring-green-500' : ''}`}
+            style={{ backgroundColor: 'green' }}
+          >
+            <span className="sr-only">Green</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={clearCanvas}
+          >
+            Clear
+          </Button>
+        </div>
+
         <div className="text-xs text-gray-500">
           {currentSlide === slides.length - 1 ? (
             'End of presentation'
@@ -396,6 +602,38 @@ export function Presentation({ slides, title, presentationId }: PresentationProp
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Canvas overlay for drawing */}
+      <canvas
+        ref={canvasRef}
+        className={`absolute inset-0 z-30 ${isDrawingMode ? 'cursor-crosshair' : 'pointer-events-none'}`}
+        onMouseDown={(e) => {
+          if (isDrawingMode) {
+            e.preventDefault()
+            startDrawing(e)
+          }
+        }}
+        onMouseMove={(e) => {
+          if (isDrawingMode) {
+            e.preventDefault()
+            draw(e)
+          }
+        }}
+        onMouseUp={stopDrawing}
+        onMouseOut={stopDrawing}
+      />
+
+      {/* Virtual cursor */}
+      <div 
+        ref={virtualCursorRef}
+        className="absolute w-4 h-4 bg-red-500 rounded-full pointer-events-none z-50 transition-all duration-100"
+        style={{ 
+          left: 0, 
+          top: 0, 
+          transform: 'translate(0, 0)',
+          display: 'none' // Initially hidden
+        }}
+      />
     </div>
   )
 }
